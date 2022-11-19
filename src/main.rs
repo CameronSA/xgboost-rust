@@ -1,5 +1,7 @@
 mod objects;
+mod algorithm;
 use crate::objects::DataFrame;
+use crate::algorithm::XGBoost;
 
 fn main() {
     let x_train = [
@@ -11,9 +13,4 @@ fn main() {
 
     let dataframe_labelled = DataFrame::new_labelled(columns, x_train);
 
-    println!("Labelled: {:?}", dataframe_labelled);
-
-    let col2 = dataframe_labelled.get_column("col2");
-    
-    print!("col2: {:?}", col2);
 }

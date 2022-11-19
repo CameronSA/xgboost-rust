@@ -1,6 +1,6 @@
 #[derive(Debug)]
 pub struct DataFrame {
-    columns: Vec<String>,
+    column_names: Vec<String>,
     rows: Vec<Vec<f64>>,
 }
 
@@ -10,7 +10,7 @@ impl DataFrame {
         let n_columns = columns.len();
         let rows = Self::generate(n_columns, data_matrix);
         DataFrame {
-            columns: columns,
+            column_names: columns,
             rows: rows,
         }
     }
@@ -24,7 +24,7 @@ impl DataFrame {
         }
 
         DataFrame {
-            columns: columns,
+            column_names: columns,
             rows: rows,
         }
     }
@@ -32,7 +32,7 @@ impl DataFrame {
     /// If the given column exists, returns the corresponding row items in that column.
     /// If the given column does not exist, returns an empty vector.
     pub fn get_column(&self, column: &str) -> Vec<f64> {
-        let column_index_option = &self.columns.iter().position(|col| col == column);
+        let column_index_option = &self.column_names.iter().position(|col| col == column);
 
         match column_index_option {
             Some(index) => self.get_column_row_items(*index),
@@ -46,8 +46,8 @@ impl DataFrame {
         let mut column_indices = vec![];
         for given_column in columns {
             let mut found: bool = false;
-            for i in 0 as usize..self.columns.len() {
-                if given_column == self.columns[i] {
+            for i in 0 as usize..self.column_names.len() {
+                if given_column == self.column_names[i] {
                     column_indices.push(i as i32);
                     found = true;
                     break;
@@ -74,6 +74,12 @@ impl DataFrame {
         }
 
         rows
+    }
+
+    pub fn average(values: &Vec<f64>) -> f64 {
+        let sum = values.iter().sum::<f64>();
+
+        sum / values.len() as f64
     }
 
     fn get_column_row_items(&self, index: usize) -> Vec<f64> {
@@ -104,7 +110,6 @@ impl DataFrame {
     }
 }
 
-
 #[cfg(test)]
 mod dataframe_tests {
     use super::DataFrame;
@@ -122,7 +127,7 @@ mod dataframe_tests {
 
         let df = DataFrame::new_labelled(columns, data_matrix);
 
-        assert_eq!(expected_columns, df.columns);
+        assert_eq!(expected_columns, df.column_names);
         assert_eq!([1.0, 1.0, 1.0].to_vec(), df.rows[0]);
         assert_eq!([1.0, 1.0, 0.0].to_vec(), df.rows[1]);
         assert_eq!([1.0, 1.0, 1.0].to_vec(), df.rows[2]);
@@ -139,7 +144,7 @@ mod dataframe_tests {
 
         let df = DataFrame::new_unlabelled(3, data_matrix);
 
-        assert_eq!(["0", "1", "2"].map(String::from).to_vec(), df.columns);
+        assert_eq!(["0", "1", "2"].map(String::from).to_vec(), df.column_names);
         assert_eq!([1.0, 1.0, 1.0].to_vec(), df.rows[0]);
         assert_eq!([1.0, 1.0, 0.0].to_vec(), df.rows[1]);
         assert_eq!([1.0, 1.0, 1.0].to_vec(), df.rows[2]);
@@ -213,5 +218,14 @@ mod dataframe_tests {
         let empty_vec: Vec<f64> = vec![];
         assert_eq!(empty_vec, column_vals[0]);
         assert_eq!([1.0, 0.0, 1.0, 0.0, 1.0].to_vec(), column_vals[1]);
+    }
+
+    #[test]
+    fn test_average() {
+        let values = vec![1.2, 3.5, 6.2, 3.0];
+        let average = DataFrame::average(&values);
+
+        assert_eq!(3.475, average);
+
     }
 }
