@@ -9,10 +9,11 @@ fn main() {
 
     let columns = vec!["col1".to_string(), "col2".to_string(), "col3".to_string()];
 
-    // let dataframe_labelled = DataFrame::new_labelled(columns, x_train);
+    let dataframe_labelled = DataFrame::new_labelled(columns, x_train);
 
-    let dataframe_unlabelled = DataFrame::new_unlabelled(columns.len(), x_train);
+    println!("Labelled: {:?}", dataframe_labelled);
 
-    //println!("Labelled: {:?}", dataframe_labelled);
-    println!("Unlabelled: {:?}", dataframe_unlabelled);
+    let col2 = dataframe_labelled.get_column("col2");
+    
+    print!("col2: {:?}", col2);
 }
