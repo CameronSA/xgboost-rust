@@ -29,8 +29,8 @@ impl DataFrame {
         }
     }
 
-    /// If the given column exists in the given dataframe, returns the corresponding row items in that column.
-    /// If the given column does not exist in the given dataframe, returns an empty vector.
+    /// If the given column exists, returns the corresponding row items in that column.
+    /// If the given column does not exist, returns an empty vector.
     pub fn get_column(&self, column: &str) -> Vec<f64> {
         let column_index_option = &self.columns.iter().position(|col| col == column);
 
@@ -40,6 +40,8 @@ impl DataFrame {
         }
     }
 
+    /// If the given columns exist, returns the corresponding rows in the order of the given columns
+    /// If any given column does not exist, returns an empty vector for that particular column
     pub fn get_columns(&self, columns: Vec<&str>) -> Vec<Vec<f64>> {
         let mut column_indices = vec![];
         for given_column in columns {
