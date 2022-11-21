@@ -1,3 +1,3 @@
-pub mod xgboost;
+pub mod algorithm;
 
-pub use self::xgboost::XGBoost;
+pub use self::algorithm::XGBoost;
