@@ -2,14 +2,14 @@ use std::cell::RefCell;
 
 use crate::objects::DataFrame;
 
-struct Leaf<'a> {
+struct Leaf {
     residuals: Vec<f64>,
-    regularisation: &'a f64,
-    column_name: &'a str,
+    regularisation: f64,
+    column_name: String,
 }
 
-impl Leaf<'_> {
-    pub fn new(residuals: Vec<f64>, regularisation: &f64, column_name: &str) -> Self {
+impl Leaf<> {
+    pub fn new(residuals: Vec<f64>, regularisation: f64, column_name: String) -> Self {
         Leaf {
             residuals,
             regularisation,
@@ -27,17 +27,17 @@ impl Leaf<'_> {
     }
 }
 
-struct Branch<'a> {
+struct Branch {
     /// If this is the root, only the leaf leaf will be populated.
     /// If 'parent_is_left' is true, the parent leaf is the left leaf of the parent branch. Otherwise, the parent leaf is the right leaf of the parent branch
-    parent_branch: Option<Box<Branch<'a>>>,
+    parent_branch: Option<Box<Branch>>,
     parent_is_left: bool,
-    left_leaf: Leaf<'a>,
-    right_leaf: Option<Leaf<'a>>,    
+    left_leaf: Leaf,
+    right_leaf: Option<Leaf>,    
     regularisation: f64,
 }
 
-impl Branch<'_> {
+impl Branch {
     pub fn new(
         parent_branch: Option<Box<Branch>>,
         parent_is_left: bool,
@@ -96,9 +96,9 @@ impl Branch<'_> {
                 right_leaf_residuals.push(residuals[*index]);
             }
 
-            let left_leaf = Leaf::new(left_leaf_residuals, &self.regularisation, column_name);
+            let left_leaf = Leaf::new(left_leaf_residuals, self.regularisation, column_name.to_string());
 
-            let right_leaf = Leaf::new(right_leaf_residuals, &self.regularisation, column_name);
+            let right_leaf = Leaf::new(right_leaf_residuals, self.regularisation, column_name.to_string());
 
             let branch = Branch::new(self.parent_branch, self.parent_is_left, left_leaf, Some(right_leaf), self.regularisation);
 
@@ -106,8 +106,8 @@ impl Branch<'_> {
         }
 
         // Select the branch with the best gain
-        let mut best_branch = branches[0];
-        let mut best_gain = best_branch.gain();
+        let mut best_index = 0;
+        let mut best_gain = branches[0].gain();
         for i in 0..branches.len() {
             if i == 0{
                 continue;
@@ -116,11 +116,11 @@ impl Branch<'_> {
             let gain = branches[i].gain();
 
             if gain > best_gain{
-                best_branch = branches[i];
+                best_index = i;
             }
         }
 
-        return best_branch;
+        return branches[best_index];
     }
 
     /// The gain is the sum of the similarity scores of the leaves in the branch, minus the similarity score of the parent leaf.
@@ -159,21 +159,9 @@ impl Branch<'_> {
 /// Each branch has a left leaf, an optional right leaf, and an optional parent branch.
 /// If a branch is the first branch, i.e. the root, then it will have no parent branch and only the left leaf will be populated.
 /// The depth of the tree is determined by the number of branches
-struct DecisionTree {
-    branches: RefCell<Vec<Branch>>,
-}
-
-impl DecisionTree {
-    pub fn new(root_branch: Branch) -> Self {
-        DecisionTree {
-            branches: RefCell::new(vec![root_branch]),
-        }
-    }
-
-    pub fn add_branch(&self, branch: Branch) {
-        self.branches.borrow_mut().push(branch);
-    }
-}
+// struct DecisionTree<'a> {
+//     branches: RefCell<Vec<Branch<'a>>>,
+// }
 
 pub struct XGBoost {
     learning_rate: f64,
