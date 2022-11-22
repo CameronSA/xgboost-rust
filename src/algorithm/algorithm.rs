@@ -1,5 +1,3 @@
-use std::cell::RefCell;
-
 use crate::objects::DataFrame;
 
 struct Leaf {
@@ -26,142 +24,6 @@ impl Leaf<> {
         score
     }
 }
-
-struct Branch {
-    /// If this is the root, only the leaf leaf will be populated.
-    /// If 'parent_is_left' is true, the parent leaf is the left leaf of the parent branch. Otherwise, the parent leaf is the right leaf of the parent branch
-    parent_branch: Option<Box<Branch>>,
-    parent_is_left: bool,
-    left_leaf: Leaf,
-    right_leaf: Option<Leaf>,    
-    regularisation: f64,
-}
-
-impl Branch {
-    pub fn new(
-        parent_branch: Option<Box<Branch>>,
-        parent_is_left: bool,
-        left_leaf: Leaf,
-        right_leaf: Option<Leaf>,        
-        regularisation: f64,
-    ) -> Self {
-        Branch {
-            parent_branch,
-            parent_is_left,
-            left_leaf,
-            right_leaf,
-            regularisation,
-        }
-    }
-
-    /// Calculate the best split for a continuous column when compared to the parent leaf
-    pub fn calculate_best_split(
-        &self,
-        values: &Vec<f64>,
-        residuals: &Vec<f64>,
-        column_name: &str,
-    ) -> Branch {
-        // TODO: sort the values - is a pain due to rust not being able to sort floats - may need quicksort implementation
-
-        // First, find average of each of the adjacent values
-        let mut adjacent_averages = vec![];
-        for i in 0..values.len() {
-            if i == values.len() - 1 {
-                break;
-            } else {
-                let adjacent_average = (values[i] + values[i + 1]) / 2.0;
-                adjacent_averages.push(adjacent_average);
-            }
-        }
-
-        // For each adjacent average, create a branch
-        let mut branches = vec![];
-        for adjacent_average in adjacent_averages {
-            let mut left_leaf_indices = vec![];
-            let mut right_leaf_indices = vec![];
-            for i in 0..values.len() {
-                if values[i] <= adjacent_average {
-                    left_leaf_indices.push(i);
-                } else {
-                    right_leaf_indices.push(i);
-                }
-            }
-
-            let mut left_leaf_residuals = vec![];
-            let mut right_leaf_residuals = vec![];
-            for index in left_leaf_indices.iter() {
-                left_leaf_residuals.push(residuals[*index]);
-            }
-            for index in right_leaf_indices.iter() {
-                right_leaf_residuals.push(residuals[*index]);
-            }
-
-            let left_leaf = Leaf::new(left_leaf_residuals, self.regularisation, column_name.to_string());
-
-            let right_leaf = Leaf::new(right_leaf_residuals, self.regularisation, column_name.to_string());
-
-            let branch = Branch::new(self.parent_branch, self.parent_is_left, left_leaf, Some(right_leaf), self.regularisation);
-
-            branches.push(branch);
-        }
-
-        // Select the branch with the best gain
-        let mut best_index = 0;
-        let mut best_gain = branches[0].gain();
-        for i in 0..branches.len() {
-            if i == 0{
-                continue;
-            }
-
-            let gain = branches[i].gain();
-
-            if gain > best_gain{
-                best_index = i;
-            }
-        }
-
-        return branches[best_index];
-    }
-
-    /// The gain is the sum of the similarity scores of the leaves in the branch, minus the similarity score of the parent leaf.
-    pub fn gain(&self) -> f64 {
-        let gain = match &self.parent_branch {
-            Some(parent_branch) => {
-                let parent_leaf: &Leaf;
-
-                if self.parent_is_left {
-                    parent_leaf = &parent_branch.left_leaf;
-                } else {
-                    parent_leaf = match &parent_branch.right_leaf {
-                        Some(leaf) => leaf,
-                        None => return 0.0,
-                    };
-                }
-
-                let right_leaf = match &self.right_leaf {
-                    Some(leaf) => leaf,
-                    None => return 0.0,
-                };
-
-                // left leaf similarity + right leaf similarity - parent similarity
-                self.left_leaf.similarity_score() + right_leaf.similarity_score()
-                    - parent_leaf.similarity_score()
-            }
-
-            None => 0.0,
-        };
-
-        gain
-    }
-}
-
-/// A decision tree consists of various levels or branches.
-/// Each branch has a left leaf, an optional right leaf, and an optional parent branch.
-/// If a branch is the first branch, i.e. the root, then it will have no parent branch and only the left leaf will be populated.
-/// The depth of the tree is determined by the number of branches
-// struct DecisionTree<'a> {
-//     branches: RefCell<Vec<Branch<'a>>>,
-// }
 
 pub struct XGBoost {
     learning_rate: f64,
@@ -237,3 +99,103 @@ impl XGBoost {
         Ok(residuals)
     }
 }
+
+
+// pub fn calculate_best_split(
+//     &self,
+//     values: &Vec<f64>,
+//     residuals: &Vec<f64>,
+//     column_name: &str,
+// ) -> Branch {
+//     // TODO: sort the values - is a pain due to rust not being able to sort floats - may need quicksort implementation
+
+//     // First, find average of each of the adjacent values
+//     let mut adjacent_averages = vec![];
+//     for i in 0..values.len() {
+//         if i == values.len() - 1 {
+//             break;
+//         } else {
+//             let adjacent_average = (values[i] + values[i + 1]) / 2.0;
+//             adjacent_averages.push(adjacent_average);
+//         }
+//     }
+
+//     // For each adjacent average, create a branch
+//     let mut branches = vec![];
+//     for adjacent_average in adjacent_averages {
+//         let mut left_leaf_indices = vec![];
+//         let mut right_leaf_indices = vec![];
+//         for i in 0..values.len() {
+//             if values[i] <= adjacent_average {
+//                 left_leaf_indices.push(i);
+//             } else {
+//                 right_leaf_indices.push(i);
+//             }
+//         }
+
+//         let mut left_leaf_residuals = vec![];
+//         let mut right_leaf_residuals = vec![];
+//         for index in left_leaf_indices.iter() {
+//             left_leaf_residuals.push(residuals[*index]);
+//         }
+//         for index in right_leaf_indices.iter() {
+//             right_leaf_residuals.push(residuals[*index]);
+//         }
+
+//         let left_leaf = Leaf::new(left_leaf_residuals, self.regularisation, column_name.to_string());
+
+//         let right_leaf = Leaf::new(right_leaf_residuals, self.regularisation, column_name.to_string());
+
+//         let branch = Branch::new(self.parent_branch, self.parent_is_left, left_leaf, Some(right_leaf), self.regularisation);
+
+//         branches.push(branch);
+//     }
+
+//     // Select the branch with the best gain
+//     let mut best_index = 0;
+//     let mut best_gain = branches[0].gain();
+//     for i in 0..branches.len() {
+//         if i == 0{
+//             continue;
+//         }
+
+//         let gain = branches[i].gain();
+
+//         if gain > best_gain{
+//             best_index = i;
+//         }
+//     }
+
+//     return branches[best_index];
+// }
+
+// /// The gain is the sum of the similarity scores of the leaves in the branch, minus the similarity score of the parent leaf.
+// pub fn gain(&self) -> f64 {
+//     let gain = match &self.parent_branch {
+//         Some(parent_branch) => {
+//             let parent_leaf: &Leaf;
+
+//             if self.parent_is_left {
+//                 parent_leaf = &parent_branch.left_leaf;
+//             } else {
+//                 parent_leaf = match &parent_branch.right_leaf {
+//                     Some(leaf) => leaf,
+//                     None => return 0.0,
+//                 };
+//             }
+
+//             let right_leaf = match &self.right_leaf {
+//                 Some(leaf) => leaf,
+//                 None => return 0.0,
+//             };
+
+//             // left leaf similarity + right leaf similarity - parent similarity
+//             self.left_leaf.similarity_score() + right_leaf.similarity_score()
+//                 - parent_leaf.similarity_score()
+//         }
+
+//         None => 0.0,
+//     };
+
+//     gain
+// }
