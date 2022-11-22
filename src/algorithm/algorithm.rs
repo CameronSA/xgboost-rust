@@ -1,27 +1,69 @@
 use crate::objects::DataFrame;
 
-struct Leaf {
-    residuals: Vec<f64>,
-    regularisation: f64,
-    column_name: String,
+/// A node with no children is a leaf
+struct Node {
+    column_index: i32,
+    residuals: Vec<f32>,
+    regularisation: f32,
+    left_child: Option<Box<Node>>,
+    right_child: Option<Box<Node>>,
 }
 
-impl Leaf<> {
-    pub fn new(residuals: Vec<f64>, regularisation: f64, column_name: String) -> Self {
-        Leaf {
+impl Node {
+    pub fn new(
+        column_index: i32,
+        residuals: Vec<f32>,
+        regularisation: f32,
+        left_child: Option<Box<Node>>,
+        right_child: Option<Box<Node>>,
+    ) -> Self {
+        Node {
+            column_index,
             residuals,
             regularisation,
-            column_name,
+            left_child,
+            right_child,
         }
     }
 
     /// The similarity score is the sum of the residuals squared, divided by the number of residuals plus the regularisation parameter
-    pub fn similarity_score(&self) -> f64 {
-        let sum = self.residuals.iter().sum::<f64>();
+    pub fn similarity_score(&self) -> f32 {
+        let sum = self.residuals.iter().sum::<f32>();
 
-        let score = (sum * sum) / (self.residuals.len() as f64 + self.regularisation);
+        let score = (sum * sum) / (self.residuals.len() as f32 + self.regularisation);
 
         score
+    }
+
+    // Calculates the gain of the child split
+    pub fn gain(&self) -> f64 {
+        let gain = match &self.parent_branch {
+            Some(parent_branch) => {
+                let parent_leaf: &Leaf;
+
+                if self.parent_is_left {
+                    parent_leaf = &parent_branch.left_leaf;
+                } else {
+                    parent_leaf = match &parent_branch.right_leaf {
+                        Some(leaf) => leaf,
+                        None => return 0.0,
+                    };
+                }
+
+                let right_leaf = match &self.right_leaf {
+                    Some(leaf) => leaf,
+                    None => return 0.0,
+                };
+
+                // left leaf similarity + right leaf similarity - parent similarity
+                self.left_leaf.similarity_score() + right_leaf.similarity_score()
+                    - parent_leaf.similarity_score()
+            }
+
+            None => 0.0,
+        };
+
+        gain
     }
 }
 
@@ -99,7 +141,6 @@ impl XGBoost {
         Ok(residuals)
     }
 }
-
 
 // pub fn calculate_best_split(
 //     &self,
