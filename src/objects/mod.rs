@@ -1,3 +1,3 @@
 pub mod objects;
 
-pub use self::objects::DataFrame;
+pub use objects::DataFrame;

@@ -40,46 +40,46 @@ impl DataFrame {
         }
     }
 
-    /// If the given columns exist, returns the corresponding rows in the order of the given columns
-    /// If any given column does not exist, returns an empty vector for that particular column
-    pub fn get_columns(&self, columns: Vec<&str>) -> Vec<Vec<f64>> {
+    /// If the given columns exist, returns a new dataframe with the given columns
+    pub fn get_columns(&self, columns: &Vec<String>) -> Option<DataFrame> {
         let mut column_indices = vec![];
         for given_column in columns {
-            let mut found: bool = false;
             for i in 0 as usize..self.column_names.len() {
-                if given_column == self.column_names[i] {
+                if given_column == &self.column_names[i] {
                     column_indices.push(i as i32);
-                    found = true;
                     break;
                 }
-            }
-
-            if !found {
-                column_indices.push(-1)
             }
         }
 
         if column_indices.len() < 1 {
-            return vec![];
+            return None;
         }
 
-        let mut rows = vec![];
+        let mut data_matrix = vec![];
 
-        for i in 0..column_indices.len() {
-            if column_indices[i] < 0 {
-                rows.push(vec![])
-            } else {
-                rows.push(self.get_column_row_items(column_indices[i] as usize));
+        for row in &self.rows {
+            for column_index in column_indices.iter() {
+                data_matrix.push(row[*column_index as usize]);
             }
         }
 
-        rows
+        let mut valid_columns = vec![];
+        for index in column_indices.iter() {
+            valid_columns.push(self.column_names[*index as usize].to_string());
+        }
+
+        Some(DataFrame::new_labelled(valid_columns, data_matrix))
     }
 
     pub fn average(values: &Vec<f64>) -> f64 {
         let sum = values.iter().sum::<f64>();
 
         sum / values.len() as f64
+    }
+
+    pub fn column_names(&self) -> &Vec<String> {
+        &self.column_names
     }
 
     fn get_column_row_items(&self, index: usize) -> Vec<f64> {
@@ -196,10 +196,16 @@ mod dataframe_tests {
 
         let df = DataFrame::new_labelled(columns, data_matrix);
 
-        let column_vals = df.get_columns(["col2", "col3"].to_vec());
+        let column_vals = match df.get_columns(&["col2", "col3"].map(String::from).to_vec()) {
+            Some(column_vals) => column_vals,
+            None => panic!("Could not find columns"),
+        };
 
-        assert_eq!([1.0, 1.0, 1.0, 0.0, 1.0].to_vec(), column_vals[0]);
-        assert_eq!([1.0, 0.0, 1.0, 0.0, 1.0].to_vec(), column_vals[1]);
+        let col2_vals = column_vals.get_column("col2");
+        let col3_vals = column_vals.get_column("col3");
+
+        assert_eq!([1.0, 1.0, 1.0, 0.0, 1.0].to_vec(), col2_vals);
+        assert_eq!([1.0, 0.0, 1.0, 0.0, 1.0].to_vec(), col3_vals);
     }
 
     #[test]
@@ -213,11 +219,20 @@ mod dataframe_tests {
 
         let df = DataFrame::new_labelled(columns, data_matrix);
 
-        let column_vals = df.get_columns(["invalid", "col3"].to_vec());
+        let column_vals = df.get_columns(&["invalid", "col3"].map(String::from).to_vec());
 
-        let empty_vec: Vec<f64> = vec![];
-        assert_eq!(empty_vec, column_vals[0]);
-        assert_eq!([1.0, 0.0, 1.0, 0.0, 1.0].to_vec(), column_vals[1]);
+        let column_vals = match df.get_columns(&["invalid", "col3"].map(String::from).to_vec()) {
+            Some(column_vals) => column_vals,
+            None => panic!("Could not find columns"),
+        };
+
+        let col3_vals = column_vals.get_column("col3");
+
+        assert_eq!(
+            column_vals.column_names(),
+            &["col3"].map(String::from).to_vec()
+        );
+        assert_eq!([1.0, 0.0, 1.0, 0.0, 1.0].to_vec(), col3_vals);
     }
 
     #[test]
@@ -226,6 +241,21 @@ mod dataframe_tests {
         let average = DataFrame::average(&values);
 
         assert_eq!(3.475, average);
+    }
 
+    #[test]
+    fn test_column_names() {
+        let data_matrix = [
+            1.0, 1.0, 1.0, 1.0, 1.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0,
+        ]
+        .to_vec();
+
+        let columns = ["col1", "col2", "col3"].map(String::from).to_vec();
+
+        let df = DataFrame::new_labelled(columns, data_matrix);
+        assert_eq!(
+            df.column_names(),
+            &["col1", "col2", "col3"].map(String::from).to_vec()
+        );
     }
 }

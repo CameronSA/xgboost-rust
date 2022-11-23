@@ -1,71 +1,7 @@
+use std::mem;
+
+use super::node::Node;
 use crate::objects::DataFrame;
-
-/// A node with no children is a leaf
-struct Node {
-    column_index: i32,
-    residuals: Vec<f32>,
-    regularisation: f32,
-    left_child: Option<Box<Node>>,
-    right_child: Option<Box<Node>>,
-}
-
-impl Node {
-    pub fn new(
-        column_index: i32,
-        residuals: Vec<f32>,
-        regularisation: f32,
-        left_child: Option<Box<Node>>,
-        right_child: Option<Box<Node>>,
-    ) -> Self {
-        Node {
-            column_index,
-            residuals,
-            regularisation,
-            left_child,
-            right_child,
-        }
-    }
-
-    /// The similarity score is the sum of the residuals squared, divided by the number of residuals plus the regularisation parameter
-    pub fn similarity_score(&self) -> f32 {
-        let sum = self.residuals.iter().sum::<f32>();
-
-        let score = (sum * sum) / (self.residuals.len() as f32 + self.regularisation);
-
-        score
-    }
-
-    // Calculates the gain of the child split
-    pub fn gain(&self) -> f64 {
-        let gain = match &self.parent_branch {
-            Some(parent_branch) => {
-                let parent_leaf: &Leaf;
-
-                if self.parent_is_left {
-                    parent_leaf = &parent_branch.left_leaf;
-                } else {
-                    parent_leaf = match &parent_branch.right_leaf {
-                        Some(leaf) => leaf,
-                        None => return 0.0,
-                    };
-                }
-
-                let right_leaf = match &self.right_leaf {
-                    Some(leaf) => leaf,
-                    None => return 0.0,
-                };
-
-                // left leaf similarity + right leaf similarity - parent similarity
-                self.left_leaf.similarity_score() + right_leaf.similarity_score()
-                    - parent_leaf.similarity_score()
-            }
-
-            None => 0.0,
-        };
-
-        gain
-    }
-}
 
 pub struct XGBoost {
     learning_rate: f64,
@@ -93,7 +29,7 @@ impl XGBoost {
         &self,
         training_data: &DataFrame,
         target_column: &str,
-        feature_columns: Vec<&str>,
+        feature_columns: &Vec<String>,
     ) -> Result<bool, String> {
         let y_train = training_data.get_column(target_column);
         let X_train = training_data.get_columns(feature_columns);
@@ -101,26 +37,22 @@ impl XGBoost {
         // Initial prediction is average of y_train
         let initial_prediction = DataFrame::average(&y_train);
 
-        // // Calculate residuals
-        // let residuals_result = &self.residuals(&y_train, &vec![initial_prediction; y_train.len()]);
+        // Calculate initial residuals
+        let residuals_result = &self.residuals(&y_train, &vec![initial_prediction; y_train.len()]);
 
-        // let residuals = match residuals_result {
-        //     Ok(val) => val,
-        //     Err(error) => return Err(error.to_string()),
-        // };
+        let residuals = match residuals_result {
+            Ok(val) => val,
+            Err(error) => return Err(error.to_string()),
+        };
 
-        // // Calculate similarity score
-        // let similarity = &self.similarity_score(residuals);
+        // For each column, create a root node
+        for i in 0..feature_columns.len() {
+            // TODO: Need to calculate best split for each column, then the best column to split the root by
+            //let values = X_train.get_column(feature_columns[i]);
+            //let root_node = calculate_best_split(, residuals, regularisation, column_index)
+        }
 
         Ok(true)
-    }
-
-    fn similarity_score(&self, residuals: &Vec<f64>) -> f64 {
-        let sum = residuals.iter().sum::<f64>();
-
-        let score = (sum * sum) / (residuals.len() as f64 + &self.regularisation);
-
-        score
     }
 
     fn residuals(
@@ -140,6 +72,88 @@ impl XGBoost {
 
         Ok(residuals)
     }
+}
+
+fn calculate_best_split(
+    values: &Vec<f32>,
+    residuals: &Vec<f32>,
+    regularisation: f32,
+    column_index: i32,
+) -> Node {
+    // Sort values
+    let (sorted_values, sorted_residuals) = sort_multiple(values, residuals);
+
+    // Find average of each of the adjacent values
+    let mut adjacent_averages = vec![];
+    for i in 0..sorted_values.len() {
+        if i == sorted_values.len() - 1 {
+            break;
+        } else {
+            let adjacent_average = (sorted_values[i] + sorted_values[i + 1]) / 2.0;
+            adjacent_averages.push(adjacent_average);
+        }
+    }
+
+    // For each adjacent average, create a node split
+    let mut root_nodes = vec![];
+    for adjacent_average in adjacent_averages {
+        // Get indices of the values that are left and right of the split
+        let mut left_leaf_indices = vec![];
+        let mut right_leaf_indices = vec![];
+        for i in 0..sorted_values.len() {
+            if sorted_values[i] <= adjacent_average {
+                left_leaf_indices.push(i);
+            } else {
+                right_leaf_indices.push(i);
+            }
+        }
+
+        // From those indices, get the residuals
+        let mut left_leaf_residuals = vec![];
+        let mut right_leaf_residuals = vec![];
+        for index in left_leaf_indices.iter() {
+            left_leaf_residuals.push(residuals[*index]);
+        }
+        for index in right_leaf_indices.iter() {
+            right_leaf_residuals.push(residuals[*index]);
+        }
+
+        let left_node = Node::new(None, None, left_leaf_residuals, regularisation);
+        let right_node = Node::new(None, None, right_leaf_residuals, regularisation);
+        let root_node = Node::new(
+            Some(column_index),
+            Some(adjacent_average),
+            sorted_residuals.clone(),
+            regularisation,
+        );
+
+        root_nodes.push(root_node);
+    }
+
+    // Select the branch with the best gain
+    let mut best_index = 0;
+    let mut best_gain = root_nodes[0].gain();
+    for i in 0..root_nodes.len() {
+        if i == 0 {
+            continue;
+        }
+
+        let gain = root_nodes[i].gain();
+
+        if gain > best_gain {
+            best_index = i;
+            best_gain = gain;            
+        }
+    }
+
+    let best_node = mem::replace(&mut root_nodes[best_index], Node::new(None,None,vec![],0.0));
+    best_node
+}
+
+/// Given two vectors, sorts vec1, and then reorganises vec2 by the new order of vec1
+fn sort_multiple(vec1: &Vec<f32>, vec2: &Vec<f32>) -> (Vec<f32>, Vec<f32>) {
+    // TODO: implementation
+    (vec1.clone(), vec2.clone())
 }
 
 // pub fn calculate_best_split(
