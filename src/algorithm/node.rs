@@ -1,20 +1,20 @@
 /// A node with no children, column index or split value is a leaf. Column indices and split values refer to child nodes
 #[derive(Debug)]
 pub struct Node {
-    column_index: Option<i32>,
-    column_split_value: Option<f32>,
-    residuals: Vec<f32>,
-    regularisation: f32,
+    column_index: Option<usize>,
+    column_split_value: Option<f64>,
+    residuals: Vec<f64>,
+    regularisation: f64,
     left_child: Option<Box<Node>>,
     right_child: Option<Box<Node>>,
 }
 
 impl Node {
     pub fn new(
-        column_index: Option<i32>,
-        column_split_value: Option<f32>,
-        residuals: Vec<f32>,
-        regularisation: f32,
+        column_index: Option<usize>,
+        column_split_value: Option<f64>,
+        residuals: Vec<f64>,
+        regularisation: f64,
     ) -> Self {
         Node {
             column_index,
@@ -26,19 +26,19 @@ impl Node {
         }
     }
 
-    pub fn column_index(&self) -> Option<i32> {
+    pub fn column_index(&self) -> Option<usize> {
         self.column_index
     }
 
-    pub fn column_split_value(&self) -> Option<f32> {
+    pub fn column_split_value(&self) -> Option<f64> {
         self.column_split_value
     }
 
-    pub fn residuals(&self) -> &Vec<f32> {
+    pub fn residuals(&self) -> &Vec<f64> {
         &self.residuals
     }
 
-    pub fn regularisation(&self) -> f32 {
+    pub fn regularisation(&self) -> f64 {
         self.regularisation
     }
 
@@ -59,16 +59,16 @@ impl Node {
     }
 
     /// The similarity score is the sum of the residuals squared, divided by the number of residuals plus the regularisation parameter
-    pub fn similarity_score(&self) -> f32 {
-        let sum = self.residuals.iter().sum::<f32>();
+    pub fn similarity_score(&self) -> f64 {
+        let sum = self.residuals.iter().sum::<f64>();
 
-        let score = (sum * sum) / (self.residuals.len() as f32 + self.regularisation);
+        let score = (sum * sum) / (self.residuals.len() as f64 + self.regularisation);
 
         score
     }
 
     // Calculates the gain of the child split. If there are no children, returns 0
-    pub fn gain(&self) -> f32 {
+    pub fn gain(&self) -> f64 {
         let parent_similarity_score = &self.similarity_score();
 
         let left_child_similarity_score = match &self.left_child {

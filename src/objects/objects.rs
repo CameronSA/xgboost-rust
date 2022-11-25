@@ -30,13 +30,12 @@ impl DataFrame {
     }
 
     /// If the given column exists, returns the corresponding row items in that column.
-    /// If the given column does not exist, returns an empty vector.
-    pub fn get_column(&self, column: &str) -> Vec<f64> {
+    pub fn get_column(&self, column: &str) -> Option<Vec<f64>> {
         let column_index_option = &self.column_names.iter().position(|col| col == column);
 
         match column_index_option {
-            Some(index) => self.get_column_row_items(*index),
-            None => return vec![],
+            Some(index) => Some(self.get_column_row_items(*index)),
+            None => None
         }
     }
 
@@ -163,7 +162,7 @@ mod dataframe_tests {
 
         let df = DataFrame::new_labelled(columns, data_matrix);
 
-        let column_vals = df.get_column("col2");
+        let column_vals = df.get_column("col2").unwrap();
 
         assert_eq!([1.0, 1.0, 1.0, 0.0, 1.0].to_vec(), column_vals);
     }
@@ -181,8 +180,7 @@ mod dataframe_tests {
 
         let column_vals = df.get_column("invalid");
 
-        let empty_vec: Vec<f64> = vec![];
-        assert_eq!(empty_vec, column_vals);
+        assert_eq!(None, column_vals);
     }
 
     #[test]
@@ -201,8 +199,8 @@ mod dataframe_tests {
             None => panic!("Could not find columns"),
         };
 
-        let col2_vals = column_vals.get_column("col2");
-        let col3_vals = column_vals.get_column("col3");
+        let col2_vals = column_vals.get_column("col2").unwrap();
+        let col3_vals = column_vals.get_column("col3").unwrap();
 
         assert_eq!([1.0, 1.0, 1.0, 0.0, 1.0].to_vec(), col2_vals);
         assert_eq!([1.0, 0.0, 1.0, 0.0, 1.0].to_vec(), col3_vals);
@@ -226,7 +224,7 @@ mod dataframe_tests {
             None => panic!("Could not find columns"),
         };
 
-        let col3_vals = column_vals.get_column("col3");
+        let col3_vals = column_vals.get_column("col3").unwrap();
 
         assert_eq!(
             column_vals.column_names(),

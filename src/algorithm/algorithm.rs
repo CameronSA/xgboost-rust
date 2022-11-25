@@ -31,8 +31,39 @@ impl XGBoost {
         target_column: &str,
         feature_columns: &Vec<String>,
     ) -> Result<bool, String> {
-        let y_train = training_data.get_column(target_column);
-        let X_train = training_data.get_columns(feature_columns);
+        // Split the dataset into feature and target sets
+        let y_train = match training_data.get_column(target_column) {
+            Some(y_train) => y_train,
+            None => return Err(format!("Target column {} not found", target_column)),
+        };
+
+        let x_train = match training_data.get_columns(feature_columns) {
+            Some(x_train) => x_train,
+            None => return Err(format!("Invalid feature columns: {:?}", feature_columns)),
+        };
+
+        // Check that all feature columns present
+        let mut missing_feature_columns = vec![];
+        for column_name in x_train.column_names() {
+            let mut found = false;
+            for feature_column in feature_columns {
+                if feature_column == column_name {
+                    found = true;
+                    break;
+                }
+            }
+
+            if !found {
+                missing_feature_columns.push(column_name.to_string());
+            }
+        }
+
+        if missing_feature_columns.len() != 0 {
+            return Err(format!(
+                "Training dataset is missing feature columns: {:?}",
+                missing_feature_columns
+            ));
+        }
 
         // Initial prediction is average of y_train
         let initial_prediction = DataFrame::average(&y_train);
@@ -45,14 +76,63 @@ impl XGBoost {
             Err(error) => return Err(error.to_string()),
         };
 
-        // For each column, create a root node
-        for i in 0..feature_columns.len() {
-            // TODO: Need to calculate best split for each column, then the best column to split the root by
-            //let values = X_train.get_column(feature_columns[i]);
-            //let root_node = calculate_best_split(, residuals, regularisation, column_index)
-        }
+        let root_node = self.build_decision_tree(&x_train, feature_columns, residuals);
 
         Ok(true)
+    }
+
+    fn build_decision_tree(&self, x_train: &DataFrame, feature_columns: &Vec<String>, residuals: &Vec<f64>) -> Result<Node, String>{
+        let mut available_columns = feature_columns.clone();
+
+        // Calculate root node
+        let root_node = match self.compute_best_node(x_train, &available_columns, residuals){
+            Ok(val) => val,
+            Err(error) => return Err(error.to_string()),
+        };
+
+        let root_column_index = match root_node.column_index(){
+            Some(val) => val,
+            None => return Ok(root_node)
+        };
+
+        // Whatever column was chosen for the root node, remove it from the column pool
+        available_columns.remove(root_column_index);
+
+        Ok(root_node)
+    }
+
+    fn compute_best_node(
+        &self,
+        x_train: &DataFrame,
+        available_columns: &Vec<String>,
+        residuals: &Vec<f64>,
+    ) -> Result<Node, String> {
+        // For each column, create a node
+        let mut nodes = vec![];
+        for i in 0..available_columns.len() {
+            let values = match x_train.get_column(&available_columns[i][..]) {
+                Some(values) => values,
+                None => {
+                    return Err(format!(
+                        "Invalid feature column: {:?}",
+                        available_columns[i]
+                    ))
+                }
+            };
+
+            let root_node = self.calculate_best_parameter_split(
+                &values,
+                &residuals,
+                self.regularisation,
+                i,
+            );
+            nodes.push(root_node);
+        }
+
+        // Select best node based on the gain
+        let best_node = self.select_best_gain(nodes);
+
+        Ok(best_node)
     }
 
     fn residuals(
@@ -72,88 +152,96 @@ impl XGBoost {
 
         Ok(residuals)
     }
-}
 
-fn calculate_best_split(
-    values: &Vec<f32>,
-    residuals: &Vec<f32>,
-    regularisation: f32,
-    column_index: i32,
-) -> Node {
-    // Sort values
-    let (sorted_values, sorted_residuals) = sort_multiple(values, residuals);
+    fn calculate_best_parameter_split(
+        &self,
+        values: &Vec<f64>,
+        residuals: &Vec<f64>,
+        regularisation: f64,
+        column_index: usize,
+    ) -> Node {
+        // Sort values
+        let (sorted_values, sorted_residuals) = self.sort_multiple(values, residuals);
 
-    // Find average of each of the adjacent values
-    let mut adjacent_averages = vec![];
-    for i in 0..sorted_values.len() {
-        if i == sorted_values.len() - 1 {
-            break;
-        } else {
-            let adjacent_average = (sorted_values[i] + sorted_values[i + 1]) / 2.0;
-            adjacent_averages.push(adjacent_average);
-        }
-    }
-
-    // For each adjacent average, create a node split
-    let mut root_nodes = vec![];
-    for adjacent_average in adjacent_averages {
-        // Get indices of the values that are left and right of the split
-        let mut left_leaf_indices = vec![];
-        let mut right_leaf_indices = vec![];
+        // Find average of each of the adjacent values
+        let mut adjacent_averages = vec![];
         for i in 0..sorted_values.len() {
-            if sorted_values[i] <= adjacent_average {
-                left_leaf_indices.push(i);
+            if i == sorted_values.len() - 1 {
+                break;
             } else {
-                right_leaf_indices.push(i);
+                let adjacent_average = (sorted_values[i] + sorted_values[i + 1]) / 2.0;
+                adjacent_averages.push(adjacent_average);
             }
         }
 
-        // From those indices, get the residuals
-        let mut left_leaf_residuals = vec![];
-        let mut right_leaf_residuals = vec![];
-        for index in left_leaf_indices.iter() {
-            left_leaf_residuals.push(residuals[*index]);
-        }
-        for index in right_leaf_indices.iter() {
-            right_leaf_residuals.push(residuals[*index]);
+        // For each adjacent average, create a node split
+        let mut nodes = vec![];
+        for adjacent_average in adjacent_averages {
+            // Get indices of the values that are left and right of the split
+            let mut left_leaf_indices = vec![];
+            let mut right_leaf_indices = vec![];
+            for i in 0..sorted_values.len() {
+                if sorted_values[i] <= adjacent_average {
+                    left_leaf_indices.push(i);
+                } else {
+                    right_leaf_indices.push(i);
+                }
+            }
+
+            // From those indices, get the residuals
+            let mut left_leaf_residuals = vec![];
+            let mut right_leaf_residuals = vec![];
+            for index in left_leaf_indices.iter() {
+                left_leaf_residuals.push(residuals[*index]);
+            }
+            for index in right_leaf_indices.iter() {
+                right_leaf_residuals.push(residuals[*index]);
+            }
+
+            let left_node = Node::new(None, None, left_leaf_residuals, regularisation);
+            let right_node = Node::new(None, None, right_leaf_residuals, regularisation);
+            let mut parent_node = Node::new(
+                Some(column_index),
+                Some(adjacent_average),
+                sorted_residuals.clone(),
+                regularisation,
+            );
+
+            parent_node.set_left_child(left_node);
+            parent_node.set_right_child(right_node);
+
+            nodes.push(parent_node);
         }
 
-        let left_node = Node::new(None, None, left_leaf_residuals, regularisation);
-        let right_node = Node::new(None, None, right_leaf_residuals, regularisation);
-        let root_node = Node::new(
-            Some(column_index),
-            Some(adjacent_average),
-            sorted_residuals.clone(),
-            regularisation,
-        );
-
-        root_nodes.push(root_node);
+        self.select_best_gain(nodes)
     }
 
-    // Select the branch with the best gain
-    let mut best_index = 0;
-    let mut best_gain = root_nodes[0].gain();
-    for i in 0..root_nodes.len() {
-        if i == 0 {
-            continue;
+    fn select_best_gain(&self, mut nodes: Vec<Node>) -> Node {
+        let mut best_index = 0;
+        let mut best_gain = nodes[0].gain();
+        for i in 0..nodes.len() {
+            if i == 0 {
+                continue;
+            }
+
+            let gain = nodes[i].gain();
+
+            if gain > best_gain {
+                best_index = i;
+                best_gain = gain;
+            }
         }
 
-        let gain = root_nodes[i].gain();
+        let best_node = mem::replace(&mut nodes[best_index], Node::new(None, None, vec![], 0.0));
 
-        if gain > best_gain {
-            best_index = i;
-            best_gain = gain;            
-        }
+        best_node
     }
 
-    let best_node = mem::replace(&mut root_nodes[best_index], Node::new(None,None,vec![],0.0));
-    best_node
-}
-
-/// Given two vectors, sorts vec1, and then reorganises vec2 by the new order of vec1
-fn sort_multiple(vec1: &Vec<f32>, vec2: &Vec<f32>) -> (Vec<f32>, Vec<f32>) {
-    // TODO: implementation
-    (vec1.clone(), vec2.clone())
+    /// Given two vectors, sorts vec1, and then reorganises vec2 by the new order of vec1
+    fn sort_multiple(&self, vec1: &Vec<f64>, vec2: &Vec<f64>) -> (Vec<f64>, Vec<f64>) {
+        // TODO: implementation
+        (vec1.clone(), vec2.clone())
+    }
 }
 
 // pub fn calculate_best_split(
