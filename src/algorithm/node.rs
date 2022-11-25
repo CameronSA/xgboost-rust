@@ -1,5 +1,5 @@
 /// A node with no children, column index or split value is a leaf. Column indices and split values refer to child nodes
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Node {
     column_index: Option<usize>,
     column_split_value: Option<f64>,

@@ -81,24 +81,111 @@ impl XGBoost {
         Ok(true)
     }
 
-    fn build_decision_tree(&self, x_train: &DataFrame, feature_columns: &Vec<String>, residuals: &Vec<f64>) -> Result<Node, String>{
+    fn build_decision_tree(
+        &self,
+        x_train: &DataFrame,
+        feature_columns: &Vec<String>,
+        residuals: &Vec<f64>,
+    ) -> Result<Node, String> {
         let mut available_columns = feature_columns.clone();
 
         // Calculate root node
-        let root_node = match self.compute_best_node(x_train, &available_columns, residuals){
+        let mut root_node = match self.compute_best_node(x_train, &available_columns, residuals) {
             Ok(val) => val,
             Err(error) => return Err(error.to_string()),
         };
 
-        let root_column_index = match root_node.column_index(){
+        let root_column_index = match root_node.column_index() {
             Some(val) => val,
-            None => return Ok(root_node)
+            None => return Ok(root_node),
         };
 
         // Whatever column was chosen for the root node, remove it from the column pool
         available_columns.remove(root_column_index);
 
+
+        // NOTE: Just for the left (to get my head around it)
+        // Will need multiple instances of 'available_columns' for each path through the tree
+
+        // Iteration 1
+        let root_node = match self.add_children(root_node, x_train, &available_columns) {
+            Ok(val) => val,
+            Err(error) => return Err(error.to_string()),
+        };
+
+        let left_node = match root_node.left_child(){
+            Some(val) => val,
+            None => return Ok(root_node),
+        };
+
+        let left_node_column_index = match left_node.column_index() {
+            Some(val) => val,
+            None => return Ok(root_node),
+        };
+
+        available_columns.remove(left_node_column_index);
+
+        // Iteration 2
+        let root_node = match self.add_children(*left_node.clone(), x_train, &available_columns) {
+            Ok(val) => val,
+            Err(error) => return Err(error.to_string()),
+        };
+
+        let left_left_node = match left_node.left_child(){
+            Some(val) =>val,
+            None => return Ok(root_node),
+        };
+
+        let left_left_node_column_index = match left_left_node.column_index() {
+            Some(val) => val,
+            None => return Ok(root_node),
+        };
+
+        available_columns.remove(left_left_node_column_index);
+
+        // Iteration 3 
+        // ...
+
+
+
         Ok(root_node)
+    }
+
+    fn add_children(
+        &self,
+        mut parent_node: Node,
+        x_train: &DataFrame,
+        available_columns: &Vec<String>,
+    ) -> Result<Node, String> {
+        // First the left
+        let left_child_residuals = match parent_node.left_child() {
+            Some(val) => val.residuals(),
+            None => return Ok(parent_node),
+        };
+
+        let left_child =
+            match self.compute_best_node(x_train, &available_columns, left_child_residuals) {
+                Ok(val) => val,
+                Err(error) => return Err(error.to_string()),
+            };
+
+        // Now the right
+        let right_child_residuals = match parent_node.right_child() {
+            Some(val) => val.residuals(),
+            None => return Ok(parent_node),
+        };
+
+        let right_child =
+            match self.compute_best_node(x_train, &available_columns, right_child_residuals) {
+                Ok(val) => val,
+                Err(error) => return Err(error.to_string()),
+            };
+
+        // Add to the parent
+        parent_node.set_left_child(left_child);
+        parent_node.set_right_child(right_child);
+
+        Ok(parent_node)
     }
 
     fn compute_best_node(
@@ -120,12 +207,8 @@ impl XGBoost {
                 }
             };
 
-            let root_node = self.calculate_best_parameter_split(
-                &values,
-                &residuals,
-                self.regularisation,
-                i,
-            );
+            let root_node =
+                self.calculate_best_parameter_split(&values, &residuals, self.regularisation, i);
             nodes.push(root_node);
         }
 
