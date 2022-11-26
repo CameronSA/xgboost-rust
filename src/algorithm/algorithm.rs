@@ -33,11 +33,11 @@ impl XGBoost {
     }
 
     pub fn train(
-        &self,
+        self,
         training_data: &DataFrame,
         target_column: &str,
         feature_columns: &Vec<String>,
-    ) -> Result<bool, String> {
+    ) -> Result<XGBoost, String> {
         // Split the dataset into feature and target sets
         let y_train = match training_data.get_column(target_column) {
             Some(y_train) => y_train,
@@ -89,9 +89,14 @@ impl XGBoost {
         };
 
         let decision_tree =
-            self.build_decision_tree(x_train_with_residuals, &residuals_column, 0, None);
+            match self.build_decision_tree(x_train_with_residuals, &residuals_column, 0, None) {
+                Some(tree) => tree,
+                None => return Err(format!("Failed to build decision tree")),
+            };
 
-        Ok(true)
+        println!("{:?}", decision_tree);
+
+        Ok(self)
     }
 
     fn build_decision_tree(
@@ -101,6 +106,8 @@ impl XGBoost {
         mut depth: i32,
         mut current_node: Option<Node>,
     ) -> Option<Node> {
+        print!(".");
+
         // Check depth
         if depth >= self.max_tree_depth {
             return current_node;
