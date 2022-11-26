@@ -88,11 +88,14 @@ impl XGBoost {
             Err(error) => return Err(error.to_string()),
         };
 
+        // Calculate root node
+        let root_node = match self.compute_best_node(&x_train_with_residuals, &residuals_column) {
+            Some(root_node) => root_node,
+            None => return Err(format!("Failed to calculate root node")),
+        };
+
         let decision_tree =
-            match self.build_decision_tree(x_train_with_residuals, &residuals_column, 0, None) {
-                Some(tree) => tree,
-                None => return Err(format!("Failed to build decision tree")),
-            };
+            self.build_decision_tree(x_train_with_residuals, &residuals_column, 0, root_node);
 
         println!("{:?}", decision_tree);
 
@@ -104,10 +107,8 @@ impl XGBoost {
         dataset: DataFrame,
         residuals_column: &String,
         mut depth: i32,
-        mut current_node: Option<Node>,
-    ) -> Option<Node> {
-        print!(".");
-
+        mut current_node: Node,
+    ) -> Node {
         // Check depth
         if depth >= self.max_tree_depth {
             return current_node;
@@ -120,49 +121,37 @@ impl XGBoost {
             return current_node;
         }
 
-        // Get the current node. If first iteration (i.e. root node is none), calculate a root node.
-        let mut current_node = match current_node {
-            Some(node) => node,
-            None => match self.compute_best_node(&dataset, &residuals_column) {
-                Some(root_node) => root_node,
-                None => return None,
-            },
-        };
-
         // Build next level, implicitly checking gain at each.
         // If there is a child, that means we did a successful split on the previous step, so we can replace it with another parent + 2 children group
         current_node = match current_node.left_child() {
-            Some(left_node) => {
-                let node = current_node
-                    .clone()
-                    .set_left_child(self.build_decision_tree(
-                        left_node.dataset().clone(),
-                        residuals_column,
-                        depth,
-                        Some(current_node),
-                    ));
+            Some(left_child) => {
+                let child = self.build_decision_tree(
+                    left_child.dataset().clone(),
+                    residuals_column,
+                    depth,
+                    *left_child.clone(),
+                );
 
-                node
+                current_node.set_left_child(Some(child))
             }
             None => current_node,
         };
 
         current_node = match current_node.right_child() {
-            Some(right_node) => {
-                let node = current_node
-                    .clone()
-                    .set_right_child(self.build_decision_tree(
-                        right_node.dataset().clone(),
-                        residuals_column,
-                        depth,
-                        Some(current_node),
-                    ));
-                node
+            Some(right_child) => {
+                let child = self.build_decision_tree(
+                    right_child.dataset().clone(),
+                    residuals_column,
+                    depth,
+                    *right_child.clone(),
+                );
+
+                current_node.set_right_child(Some(child))
             }
             None => current_node,
         };
 
-        Some(current_node)
+        current_node
     }
 
     fn compute_best_node(&self, dataset: &DataFrame, residuals_column: &String) -> Option<Node> {

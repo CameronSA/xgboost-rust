@@ -15,4 +15,5 @@ fn main() {
 
     let model = XGBoost::new(1.0,10,1.0,5,0.0,1);
     let train_result = model.train(&dataframe_labelled, "col3", &["col1".to_string(),"col2".to_string()].to_vec());
+
 }
