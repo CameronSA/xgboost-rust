@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DataFrame {
     column_names: Vec<String>,
     rows: Vec<Vec<f64>>,
@@ -29,13 +29,63 @@ impl DataFrame {
         }
     }
 
+    pub fn new_empty() -> DataFrame {
+        DataFrame {
+            column_names: vec![],
+            rows: vec![],
+        }
+    }
+
+    pub fn get_row(&self, row_index: usize) -> Result<&Vec<f64>, String> {
+        // TODO: test
+        if row_index >= self.rows.len() {
+            return Err(String::from("Row index out of bounds"));
+        }
+
+        Ok(&self.rows[row_index])
+    }
+
+    pub fn add_row(mut self, row: Vec<f64>) -> Self {
+        // TODO: test
+        self.rows.push(row);
+        self
+    }
+
+    pub fn add_column(
+        mut self,
+        column_name: &str,
+        column_values: Vec<f64>,
+    ) -> Result<Self, String> {
+        // TODO: test
+
+        if column_values.len() != self.rows.len() {
+            return Err(String::from(format!(
+                "The number of column values: {} does not match the number of rows: {}",
+                column_values.len(),
+                self.rows.len()
+            )));
+        }
+
+        self.column_names.push(column_name.to_string());
+
+        for i in 0..column_values.len() {
+            self.rows[i].push(column_values[i]);
+        }
+
+        Ok(self)
+    }
+
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
     /// If the given column exists, returns the corresponding row items in that column.
     pub fn get_column(&self, column: &str) -> Option<Vec<f64>> {
         let column_index_option = &self.column_names.iter().position(|col| col == column);
 
         match column_index_option {
             Some(index) => Some(self.get_column_row_items(*index)),
-            None => None
+            None => None,
         }
     }
 
