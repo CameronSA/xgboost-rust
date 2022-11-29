@@ -8,7 +8,7 @@ impl DataFrame {
     /// Create a labelled DataFrame with the given columns
     pub fn new_labelled(columns: Vec<String>, data_matrix: Vec<f64>) -> DataFrame {
         let n_columns = columns.len();
-        let rows = Self::generate(n_columns, data_matrix);
+        let rows = DataFrame::generate(n_columns, data_matrix);
         DataFrame {
             column_names: columns,
             rows: rows,
@@ -17,7 +17,7 @@ impl DataFrame {
 
     /// Create an unlabelled DataFrame with the given number of columns
     pub fn new_unlabelled(n_columns: usize, data_matrix: Vec<f64>) -> DataFrame {
-        let rows = Self::generate(n_columns, data_matrix);
+        let rows = DataFrame::generate(n_columns, data_matrix);
         let mut columns = vec![];
         for i in 0..n_columns {
             columns.push(i.to_string())
@@ -45,7 +45,7 @@ impl DataFrame {
         Ok(&self.rows[row_index])
     }
 
-    pub fn add_row(mut self, row: Vec<f64>) -> Self {
+    pub fn add_row(mut self, row: Vec<f64>) -> DataFrame {
         // TODO: test
         self.rows.push(row);
         self
@@ -55,7 +55,7 @@ impl DataFrame {
         mut self,
         column_name: &str,
         column_values: Vec<f64>,
-    ) -> Result<Self, String> {
+    ) -> Result<DataFrame, String> {
         // TODO: test
 
         if column_values.len() != self.rows.len() {
@@ -156,6 +156,247 @@ impl DataFrame {
         }
 
         rows
+    }
+}
+
+/// A node with no children, column index or split value is a leaf. Column indices and split values refer to child nodes
+#[derive(Clone, Debug)]
+pub struct Node {
+    column_index: Option<usize>,
+    column_split_value: Option<f64>,
+    dataset: DataFrame,
+    residuals_column: String,
+    regularisation: f64,
+    left_child: Option<Box<Node>>,
+    right_child: Option<Box<Node>>,
+}
+
+impl Node {
+    pub fn new(
+        column_index: Option<usize>,
+        column_split_value: Option<f64>,
+        dataset: DataFrame,
+        residuals_column: String,
+        regularisation: f64,
+    ) -> Self {
+        Node {
+            column_index,
+            column_split_value,
+            dataset,
+            residuals_column,
+            regularisation,
+            left_child: None,
+            right_child: None,
+        }
+    }
+
+    pub fn column_index(&self) -> Option<usize> {
+        self.column_index
+    }
+
+    pub fn column_split_value(&self) -> Option<f64> {
+        self.column_split_value
+    }
+
+    pub fn dataset(&self) -> &DataFrame {
+        &self.dataset
+    }
+
+    pub fn residuals_column(&self) -> &String {
+        &self.residuals_column
+    }
+
+    pub fn regularisation(&self) -> f64 {
+        self.regularisation
+    }
+
+    pub fn left_child(&self) -> &Option<Box<Node>> {
+        &self.left_child
+    }
+
+    pub fn right_child(&self) -> &Option<Box<Node>> {
+        &self.right_child
+    }
+
+    pub fn set_left_child(mut self, left_child: Option<Node>) -> Self {
+        self.left_child = match left_child {
+            Some(node) => Some(Box::new(node)),
+            Node => None,
+        };
+
+        self
+    }
+
+    pub fn set_right_child(mut self, right_child: Option<Node>) -> Self {
+        self.right_child = match right_child {
+            Some(node) => Some(Box::new(node)),
+            Node => None,
+        };
+
+        self
+    }
+
+    /// The similarity score is the sum of the residuals squared, divided by the number of residuals plus the regularisation parameter
+    pub fn similarity_score(&self) -> f64 {
+        let residuals = match self.dataset.get_column(&self.residuals_column) {
+            Some(val) => val,
+            None => return 0.0,
+        };
+
+        let sum = residuals.iter().sum::<f64>();
+
+        let score = (sum * sum) / (residuals.len() as f64 + self.regularisation);
+
+        score
+    }
+
+    // Calculates the gain of the child split. If there are no children, returns 0
+    pub fn gain(&self) -> f64 {
+        let parent_similarity_score = &self.similarity_score();
+
+        let left_child_similarity_score = match &self.left_child {
+            Some(child) => child.similarity_score(),
+            None => return 0.0,
+        };
+
+        let right_child_similarity_score = match &self.right_child {
+            Some(child) => child.similarity_score(),
+            None => return 0.0,
+        };
+
+        let gain =
+            left_child_similarity_score + right_child_similarity_score - parent_similarity_score;
+
+        gain
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::objects::DataFrame;
+
+    use super::Node;
+
+    fn test_df() -> DataFrame {
+        let x_train = [1.0, 2.0, 3.0].to_vec();
+
+        let columns = vec!["col1".to_string(), "col2".to_string(), "col3".to_string()];
+
+        let dataframe_labelled = DataFrame::new_labelled(columns, x_train);
+
+        dataframe_labelled
+    }
+
+    #[test]
+    fn test_add_nodes() {
+        let mut node = Node::new(Some(1), Some(1.0), test_df(), "col1".to_string(), 1.0);
+        node = node.set_left_child(Some(Node::new(
+            Some(2),
+            Some(1.0),
+            test_df(),
+            "col1".to_string(),
+            1.0,
+        )));
+        node = node.set_right_child(Some(Node::new(
+            Some(3),
+            Some(1.0),
+            test_df(),
+            "col1".to_string(),
+            1.0,
+        )));
+
+        let expected = r#"Node { column_index: Some(1), column_split_value: Some(1.0), dataset: DataFrame { column_names: ["col1", "col2", "col3"], rows: [[1.0, 2.0, 3.0]] }, residuals_column: "col1", regularisation: 1.0, left_child: Some(Node { column_index: Some(2), column_split_value: Some(1.0), dataset: DataFrame { column_names: ["col1", "col2", "col3"], rows: [[1.0, 2.0, 3.0]] }, residuals_column: "col1", regularisation: 1.0, left_child: None, right_child: None }), right_child: Some(Node { column_index: Some(3), column_split_value: Some(1.0), dataset: DataFrame { column_names: ["col1", "col2", "col3"], rows: [[1.0, 2.0, 3.0]] }, residuals_column: "col1", regularisation: 1.0, left_child: None, right_child: None }) }"#;
+
+        let actual = format!("{:?}", node);
+
+        assert_eq!(expected, actual);
+    }
+
+    #[test]
+    fn test_get_nodes() {
+        let mut node = Node::new(Some(1), Some(1.0), test_df(), "col1".to_string(), 1.0);
+        node = node.set_left_child(Some(Node::new(
+            Some(2),
+            Some(1.0),
+            test_df(),
+            "col1".to_string(),
+            1.0,
+        )));
+        node = node.set_right_child(Some(Node::new(
+            Some(3),
+            Some(1.0),
+            test_df(),
+            "col1".to_string(),
+            1.0,
+        )));
+
+        let left = match node.left_child() {
+            Some(left) => left,
+            None => panic!("left is None"),
+        };
+
+        let right = match node.right_child() {
+            Some(right) => right,
+            None => panic!("left is None"),
+        };
+
+        let expected_left = r#"Node { column_index: Some(2), column_split_value: Some(1.0), dataset: DataFrame { column_names: ["col1", "col2", "col3"], rows: [[1.0, 2.0, 3.0]] }, residuals_column: "col1", regularisation: 1.0, left_child: None, right_child: None }"#;
+        let expected_right = r#"Node { column_index: Some(3), column_split_value: Some(1.0), dataset: DataFrame { column_names: ["col1", "col2", "col3"], rows: [[1.0, 2.0, 3.0]] }, residuals_column: "col1", regularisation: 1.0, left_child: None, right_child: None }"#;
+
+        let actual_left = format!("{:?}", left);
+
+        let actual_right = format!("{:?}", right);
+
+        assert_eq!(expected_left.to_string(), actual_left);
+        assert_eq!(expected_right.to_string(), actual_right);
+    }
+
+    #[test]
+    fn test_get_column_index() {
+        let node = Node::new(Some(1), Some(1.1), test_df(), "col1".to_string(), 1.2);
+
+        let column_index = node.column_index();
+
+        assert_eq!(column_index, Some(1));
+    }
+
+    #[test]
+    fn test_get_column_split_value() {
+        let node = Node::new(Some(1), Some(1.1), test_df(), "col1".to_string(), 1.2);
+
+        let column_split_value = node.column_split_value();
+
+        assert_eq!(column_split_value, Some(1.1));
+    }
+
+    #[test]
+    fn test_get_residuals_column() {
+        let node = Node::new(Some(1), Some(1.1), test_df(), "col1".to_string(), 1.2);
+
+        let residuals = node.residuals_column().to_string();
+
+        assert_eq!(residuals, "col1".to_string());
+    }
+
+    #[test]
+    fn test_get_regularisation() {
+        let node = Node::new(Some(1), Some(1.1), test_df(), "col1".to_string(), 1.2);
+
+        let regularisation = node.regularisation();
+
+        assert_eq!(regularisation, 1.2);
+    }
+
+    #[test]
+    fn test_get_dataset() {
+        let node = Node::new(Some(1), Some(1.1), test_df(), "col1".to_string(), 1.2);
+
+        let dataset = node.dataset();
+
+        let expected_str =
+            r#"DataFrame { column_names: ["col1", "col2", "col3"], rows: [[1.0, 2.0, 3.0]] }"#;
+
+        assert_eq!(format!("{:?}", dataset), expected_str);
     }
 }
 
