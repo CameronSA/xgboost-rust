@@ -4,6 +4,25 @@ pub struct DataFrame {
     rows: Vec<Vec<f64>>,
 }
 
+struct IndexValue {
+    index: usize,
+    value: f64,
+}
+
+impl IndexValue {
+    fn new(index: usize, value: f64) -> Self {
+        Self { index, value }
+    }
+
+    fn index(&self) -> &usize {
+        &self.index
+    }
+
+    fn value(&self) -> &f64 {
+        &self.value
+    }
+}
+
 impl DataFrame {
     /// Create a labelled DataFrame with the given columns
     pub fn new_labelled(columns: Vec<String>, data_matrix: Vec<f64>) -> DataFrame {
@@ -129,6 +148,23 @@ impl DataFrame {
 
     pub fn column_names(&self) -> &Vec<String> {
         &self.column_names
+    }
+
+    /// Performs a quick sort on the dataframe columns using the given column as a sort key. If the key is invalid, returns the original dataframe
+    pub fn sort(self, column: &String) -> DataFrame {
+        let column_values = match self.get_column(column){
+            Some(column_values) => column_values,
+            None => return self
+        };
+
+        let mut column_index_values: Vec<IndexValue> = vec![];
+        for i in 0..column_values.len() {
+            column_index_values.push(IndexValue::new(i,column_values[i]));
+        }
+
+        // TODO: implementation
+
+        return self;
     }
 
     fn get_column_row_items(&self, index: usize) -> Vec<f64> {
