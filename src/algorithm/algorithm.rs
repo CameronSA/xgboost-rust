@@ -164,17 +164,6 @@ impl XGBoost {
                 continue;
             }
 
-            // These panics should never happen
-            let values = match dataset.get_column(&available_columns[i][..]) {
-                Some(values) => values,
-                None => panic!("Couldn't find column"),
-            };
-
-            let residuals = match dataset.get_column(&residuals_column[..]) {
-                Some(val) => val,
-                None => panic!("Couldn't find residuals"),
-            };
-
             match self.calculate_best_parameter_split(
                 dataset.clone(),
                 residuals_column,
